@@ -1,0 +1,13 @@
+{
+  "name": "graphql-mason",
+  "version": "1.0.0",
+  "description": "express middleware that sets up a REST API from GraphQL schema and resolvers",
+  "main": "index.js",
+  "author": "Pranay Prakash <pranay.gp@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "express-graphql": "^0.6.11",
+    "graphql": "^0.11.7",
+    "path-to-regexp": "^2.1.0"
+  }
+}

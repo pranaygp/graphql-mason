@@ -1,0 +1,19 @@
+{
+  "name": "graphql-mason",
+  "version": "1.0.0",
+  "description": "A REST API generator from a graphql schema",
+  "main": "index.js",
+  "author": "Pranay Prakash <pranay.gp@gmail.com?",
+  "license": "MIT",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.18.2",
+    "dotenv": "^4.0.0",
+    "express": "^4.16.2",
+    "express-graphql": "^0.6.11",
+    "graphql": "^0.11.7",
+    "mongoose": "^4.12.4"
+  }
+}
