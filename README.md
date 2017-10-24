@@ -45,7 +45,14 @@ You now have a basic REST API that supports the queries and mutations from your 
 ```
 type Query {
   user(id: ID): User                  @mason(path: "users/:id")
-  tasks(id: ID, where: TaskInput, sort: Sort = ASC, skip: Int, limit: Int = 20, count: Boolean = false): [Task] @mason(path: "tasks/:sort/:skip/:limit?")
+  tasks(
+    id: ID,
+    where: TaskInput,
+    sort: Sort = ASC,
+    skip: Int,
+    limit: Int = 20,
+    count: Boolean = false
+  ): [Task]                           @mason(path: "tasks/:sort/:skip/:limit?")
   task(id: ID): Task                  @mason(path: "tasks/:id")
 }
 
