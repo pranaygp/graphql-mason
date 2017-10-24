@@ -106,6 +106,7 @@ module.exports = {
       pendingTasks: pendingTasksResolver(result)
     }
   },
+  deleteUser: async ({id}) => User.findByIdAndRemove(id),
   createTask: async ({task}) => {
     let newTask = new Task(task);
     let result = await newTask.save()
@@ -114,5 +115,6 @@ module.exports = {
       assignedUser: assignedUserResolver(result),
       assignedUserName: assignedUserNameResolver(result)
     }
-  }
+  },
+  deleteTask: async ({id}) => Task.findByIdAndRemove(id),
 }

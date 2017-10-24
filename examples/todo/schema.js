@@ -59,7 +59,9 @@ type Query {
 }
 
 type Mutation {
-  createUser(user: UserInput): User @mason(path: "users"),
+  createUser(user: UserInput): User @mason(path: "users")
+  deleteUser(id: ID): User @mason(path: "users/:id", method: "DELETE")
   createTask(task: TaskInput): Task @mason(path: "tasks")
+  deleteTask(id: ID): Task @mason(path: "task/:id", method: "DELETE")
 }
 `)

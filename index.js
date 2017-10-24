@@ -5,8 +5,7 @@ function graphqlMason(options) {
     throw new Error('GraphQL Mason requires options.');
   }
 
-  const queryRouteMap = new Map;
-  const mutationRouteMap = new Map;
+  const routeMap = new Map;
 
   const schema = options.schema;
   const root = options.rootValue;
@@ -16,6 +15,7 @@ function graphqlMason(options) {
 
   for(let field in rootFields) {
     const apiPath = resolvePathFromType(rootFields[field]);
+    const apiMethod = resolveMethodFromType(rootFields[field], 'GET');
 
     const pathKeys = []
     const pathRegexp = pathToRegexp(apiPath, pathKeys);
@@ -24,7 +24,7 @@ function graphqlMason(options) {
     const fieldResolver = root[field];
  
     // Base route => resolver
-    queryRouteMap.set(pathRegexp, {
+    routeMap.set(pathRegexp, {
       resolver: (request, match) => {
         const urlValuesMap = pathKeys.reduce((prev, curr, currI) => {
           prev[curr.name] = match[currI];
@@ -39,7 +39,7 @@ function graphqlMason(options) {
         }
         return fieldResolver(argsMap, request);
       },
-      method: 'GET'
+      method: apiMethod
     });
   }
 
@@ -48,6 +48,7 @@ function graphqlMason(options) {
 
   for(let field in rootFields) {
     const apiPath = resolvePathFromType(rootFields[field]);
+    const apiMethod = resolveMethodFromType(rootFields[field], 'POST');
     
     const pathKeys = []
     const pathRegexp = pathToRegexp(apiPath, pathKeys);
@@ -56,7 +57,7 @@ function graphqlMason(options) {
     const fieldResolver = root[field];
   
     // Base route => resolver
-    mutationRouteMap.set(pathRegexp, {
+    routeMap.set(pathRegexp, {
       resolver: (request, match) => {
         const urlValuesMap = pathKeys.reduce((prev, curr, currI) => {
           prev[curr.name] = match[currI];
@@ -71,7 +72,7 @@ function graphqlMason(options) {
         }
         return fieldResolver(argsMap, request);
       },
-      method: 'POST'
+      method: apiMethod
     });
   }
   
@@ -80,40 +81,30 @@ function graphqlMason(options) {
 
   return (request, response) => {
     let foundMatch = false;
-    if(request.method === 'GET') {
-      queryRouteMap.forEach(({resolver}, route) => {
-        const match = route.exec(request.path);
-        if(match === null) return;
-        foundMatch = true;
+    routeMap.forEach(({resolver, method}, route) => {
+      if(foundMatch) return;
+      if(method !== request.method) return;
+      const match = route.exec(request.path);
+      if(match === null) return;
+      foundMatch = true;
 
-        const result = resolver(request, match.slice(1));
+      const result = resolver(request, match.slice(1));
 
-        if(result instanceof Promise) {
-          result.then(res => response.json(res));
-        } else {
-          response.json(result);
-        }
-      })
-    }
-
-    if(request.method === 'POST') {
-      mutationRouteMap.forEach(({resolver, args}, route) => {
-        const math = route.exec(request.path);
-        if(math === null) return;
-        foundMatch = true;
-        
-        const result = resolver(request, match.slice(1));
-
-        if(result instanceof Promise) {
-          result.then(res => response.json(res));
-        } else {
-          response.json(result);
-        }
-      })
-    }
+      if(result instanceof Promise) {
+        result
+          .then(res => response.json(res))
+          .catch(err => {
+            response.statusCode = 500;
+            response.send('Internal Server Error');
+          });
+      } else {
+        response.json(result);
+      }
+    })
 
     if(!foundMatch) {
-      response.status(404).send('Invalid Endpoint');
+      response.statusCode = 404;
+      response.send('Invalid Endpoint');
     }
   }
 }
@@ -140,20 +131,14 @@ function parseArgs(argTypes, query, urlMatch) {
 
     // Look at the query object, and override anything in the args we find from here
     // If it's not a string type, we try to JSON parse the value, else we just set the value
-    if(argType.type.toString() !== 'String') {
-      // Check the query params
-      if(query[argKey] && typeof query[argKey] === 'string') {
-        try {
-          args[argKey] = JSON.parse(query[argKey]);
-        } catch (error) {
-          //TODO: Throw 400 error for invalid JSON
-        }
+    if(query[argKey] && typeof query[argKey] === 'string' && argType.type.toString() !== 'String') {
+      try {
+        args[argKey] = JSON.parse(query[argKey]);
+      } catch (error) {
+        //TODO: Throw 400 error for invalid JSON
       }
-    } else {
-      // Then check the query params (and override)
-      if(query[argKey] && typeof query[argKey] === 'string') {
-        args[argKey] = query[argKey];
-      }
+    } else if(query[argKey]) {
+      args[argKey] = query[argKey];
     }
 
     // Didn't find a value in query or url. Set to default
@@ -182,6 +167,24 @@ function resolvePathFromType(node) {
     }
   })
   return path;
+}
+
+function resolveMethodFromType(node, defaultMethod) {
+  let method = defaultMethod;
+  node.astNode.directives.forEach(directive => {
+    if(directive.name.kind === 'Name' && directive.name.value === 'mason') {
+      // There's an @mason directive. Check for path:
+      directive.arguments.forEach(argument => {
+        if(argument.name.kind === 'Name' && argument.name.value === 'method') {
+          // There's a method argument in the directive
+          if(argument.value.kind === 'StringValue') {
+            method = argument.value.value;
+          }
+        }
+      })
+    }
+  })
+  return method;
 }
 
 module.exports = graphqlMason;
