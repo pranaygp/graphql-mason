@@ -51,9 +51,11 @@ input TaskInput {
 
 type Query {
   # Fetch users
-  users(id: ID, where: UserInput, sort: Sort = ASC, skip: Int, limit: Int = 20, count: Boolean = false): [User],
+  users(id: ID, where: UserInput, sort: Sort = ASC, skip: Int, limit: Int = 20, count: Boolean = false): [User]
+  user(id: ID): User @mason(path: "users/:id")
   # Fetch tasks
-  tasks(id: ID, where: TaskInput, sort: Sort = ASC, skip: Int, limit: Int = 20, count: Boolean = false): [Task]
+  tasks(id: ID, where: TaskInput, sort: Sort = ASC, skip: Int, limit: Int = 20, count: Boolean = false): [Task] @mason(path: "tasks/:sort/:skip/:limit?")
+  task(id: ID): Task @mason(path: "tasks/:id")
 }
 
 type Mutation {

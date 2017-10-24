@@ -71,6 +71,7 @@ module.exports = {
 
     return results.map(user => ({...user.toObject(), pendingTasks: pendingTasksResolver(user)}));
   },
+  user: async ({id}) => User.findById(id),
   tasks: async ({id, where, sort, skip, limit, count}) => {
     let query;
 
@@ -96,6 +97,7 @@ module.exports = {
     
     return results.map(task => ({...task.toObject(), assignedUser: assignedUserResolver(task), assignedUserName: assignedUserNameResolver(task)}));
   },
+  task: async ({id}) => Task.findById(id),
   createUser: async ({user}) => {
     let newUser = new User(user);
     let result = await newUser.save()

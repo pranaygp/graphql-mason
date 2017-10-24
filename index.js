@@ -15,35 +15,64 @@ function graphqlMason(options) {
   let rootFields = schema.getQueryType().getFields();
 
   for(let field in rootFields) {
-    const baseAPIPath = resolvePathFromType(rootFields[field]);
-    // Base route => resolver
-    queryRouteMap.set(pathToRegexp(baseAPIPath), {
-      resolver: root[field],
-      args: rootFields[field].args
-    });
+    const apiPath = resolvePathFromType(rootFields[field]);
 
-    // If the root has an argument which takes an ID, then create /:id 
-    // which just calls the resolver setting the appropriate field to id
-    let IDarg = rootFields[field].args.find(arg => arg.type.toString() === 'ID');
-    if(IDarg) {
-      queryRouteMap.set(pathToRegexp(baseAPIPath + '/:id'), {
-        resolver: id => (args, request) => {
-          return root[field]({...args, [IDarg.name]: id }, request)
-        },
-        args: rootFields[field].args
-      });
-    }
+    const pathKeys = []
+    const pathRegexp = pathToRegexp(apiPath, pathKeys);
+
+    const args = rootFields[field].args;
+    const fieldResolver = root[field];
+ 
+    // Base route => resolver
+    queryRouteMap.set(pathRegexp, {
+      resolver: (request, match) => {
+        const urlValuesMap = pathKeys.reduce((prev, curr, currI) => {
+          prev[curr.name] = match[currI];
+          return prev;
+        }, {});
+        let argsMap;
+        if (request.method === 'GET') {
+          argsMap = parseArgs(args, request.query, urlValuesMap)
+        } else {
+          // TODO: Don't rely on body-parser. Do it implicitly here
+          argsMap = parseArgs(args, request.body, urlValuesMap)
+        }
+        return fieldResolver(argsMap, request);
+      },
+      method: 'GET'
+    });
   }
 
   // Setup Mutations
   rootFields = schema.getMutationType().getFields();
 
   for(let field in rootFields) {
-    const baseAPIPath = resolvePathFromType(rootFields[field]);
-    mutationRouteMap.set(pathToRegexp(baseAPIPath), {
-      resolver: root[field],
-      args: rootFields[field].args
-    })
+    const apiPath = resolvePathFromType(rootFields[field]);
+    
+    const pathKeys = []
+    const pathRegexp = pathToRegexp(apiPath, pathKeys);
+
+    const args = rootFields[field].args;
+    const fieldResolver = root[field];
+  
+    // Base route => resolver
+    mutationRouteMap.set(pathRegexp, {
+      resolver: (request, match) => {
+        const urlValuesMap = pathKeys.reduce((prev, curr, currI) => {
+          prev[curr.name] = match[currI];
+          return prev;
+        }, {});
+        let argsMap;
+        if (request.method === 'GET') {
+          argsMap = parseArgs(args, request.query, urlValuesMap)
+        } else {
+          // TODO: Don't rely on body-parser. Do it implicitly here
+          argsMap = parseArgs(args, request.body, urlValuesMap)
+        }
+        return fieldResolver(argsMap, request);
+      },
+      method: 'POST'
+    });
   }
   
   // Remove rootFields
@@ -52,15 +81,12 @@ function graphqlMason(options) {
   return (request, response) => {
     let foundMatch = false;
     if(request.method === 'GET') {
-      queryRouteMap.forEach(({resolver, args}, route) => {
+      queryRouteMap.forEach(({resolver}, route) => {
         const match = route.exec(request.path);
         if(match === null) return;
         foundMatch = true;
-        if(match.length === 2) {
-          resolver = resolver(match[1]);
-        }
 
-        const result = resolver(parseArgs(request.query, args), request);
+        const result = resolver(request, match.slice(1));
 
         if(result instanceof Promise) {
           result.then(res => response.json(res));
@@ -75,8 +101,8 @@ function graphqlMason(options) {
         const math = route.exec(request.path);
         if(math === null) return;
         foundMatch = true;
-
-        const result = resolver(parseArgs(request.body, args), request);
+        
+        const result = resolver(request, match.slice(1));
 
         if(result instanceof Promise) {
           result.then(res => response.json(res));
@@ -94,23 +120,44 @@ function graphqlMason(options) {
 
 /**
  * A helper function to parse the query inputs, which is usually just parsing JSON for args that aren't 'String' type. If an arg isn't provided in the query, we se the schema default value
- * @param {Object} query The request query object (express: request.query) or for mutations, the body (express: request.body with body-parser)
  * @param {Object} argTypes The type nodes for the arguments from the schema
+ * @param {Object} query The request query object (express: request.query) or for mutations, the body (express: request.body with body-parser)
+ * @param {Object} urlValues The request url matched values
  */
-function parseArgs(query, argTypes) {
+function parseArgs(argTypes, query, urlMatch) {
   // Do we need to do any other parsing here besides simple JSON?
-
-  let args = query;
+  let args = {};
   argTypes.forEach(argType => {
     let argKey = argType.name;
-    if (args[argKey] && typeof args[argKey] === 'string' && argType.type.toString() !== 'String') {
-      try {
-        args[argKey] = JSON.parse(args[argKey]);
-      } catch (error) {
-        //TODO: Throw 400 error for invalid JSON
-        // throw httpError(400, 'Args are invalid JSON.');
+
+    // First check the url params
+    if(urlMatch[argKey] && typeof urlMatch[argKey] === 'string') {
+      args[argKey] = urlMatch[argKey];
+      if(argType.type.toString() === 'Int') {
+        args[argKey] = Number(args[argKey]);
       }
-    } else if (typeof args[argKey] !== 'string' && typeof args[argKey] !== 'object') {
+    } 
+
+    // Look at the query object, and override anything in the args we find from here
+    // If it's not a string type, we try to JSON parse the value, else we just set the value
+    if(argType.type.toString() !== 'String') {
+      // Check the query params
+      if(query[argKey] && typeof query[argKey] === 'string') {
+        try {
+          args[argKey] = JSON.parse(query[argKey]);
+        } catch (error) {
+          //TODO: Throw 400 error for invalid JSON
+        }
+      }
+    } else {
+      // Then check the query params (and override)
+      if(query[argKey] && typeof query[argKey] === 'string') {
+        args[argKey] = query[argKey];
+      }
+    }
+
+    // Didn't find a value in query or url. Set to default
+    if (!args[argKey]) {
       args[argKey] = argType.defaultValue;
     }
   });
